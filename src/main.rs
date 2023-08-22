@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let today = Utc::now();
-        if today.month() == 8 && today.day() == 22 {
+        if today.month() == 8 && today.day() == 23 {
             debug!(
                 GITHUB_DOWN_AUG_23_CONTRACT_ID,
                 TARGET_MONTH, TARGET_DAY, "today matches the target date of the contract",
