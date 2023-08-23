@@ -76,7 +76,7 @@ async fn bet_20_github_down(client: &Client, red: bool) -> Result<()> {
 }
 
 const GITHUB_STATUS_URL: &str = "https://www.githubstatus.com/api/v2/status.json";
-const POLL_GITHUB_INTERVAL_SECONDS: u64 = 4;
+const GITHUB_POLL_INTERVAL_SECONDS: u64 = 1;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if response.status.indicator == "none" {
             debug!("GitHub is working fine, nothing to do, sleeping");
-            sleep(std::time::Duration::from_secs(POLL_GITHUB_INTERVAL_SECONDS)).await;
+            sleep(std::time::Duration::from_secs(GITHUB_POLL_INTERVAL_SECONDS)).await;
             continue;
         }
 
@@ -137,7 +137,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 TARGET_MONTH,
                 TARGET_DAY, "GitHub has an incident, but today does not match target",
             );
-            sleep(Duration::from_secs(POLL_GITHUB_INTERVAL_SECONDS)).await;
+            sleep(Duration::from_secs(GITHUB_POLL_INTERVAL_SECONDS)).await;
         }
     }
 }
