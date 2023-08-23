@@ -18,22 +18,22 @@ use tracing::{debug, info};
 const MANIFOLD_MARKETS_API: &str = "https://manifold.markets/api";
 const BET_PATH: &str = "/v0/bet";
 
-const GITHUB_DOWN_AUG_23_CONTRACT_ID: &str = "G72zF9cjXZIaSqlQfXSU";
-const GITHUB_DOWN_AUG_23_RED_CONTRACT_ID: &str = "MjAxLhDN7Z8e2twMEPJI";
+const GITHUB_DOWN_AUG_24_CONTRACT_ID: &str = "RdZp1bQpW8ZqKQOzuqXp";
+const GITHUB_DOWN_AUG_24_RED_CONTRACT_ID: &str = "G8UaeuL7taEHvNQS8A6Y";
 const TARGET_MONTH: u64 = 8;
 const TARGET_DAY: u64 = 23;
 const CONTENT_TYPE_APPLICATION_JSON: &str = "application/json";
 
 lazy_static! {
     static ref GITHUB_DOWN_BET_YES_PAYLOAD: serde_json::Value = json!({
-        "amount": 20,
+        "amount": 40,
         "outcome": "YES",
-        "contractId": GITHUB_DOWN_AUG_23_CONTRACT_ID,
+        "contractId": GITHUB_DOWN_AUG_24_CONTRACT_ID,
     });
     static ref GITHUB_DOWN_RED_BET_YES_PAYLOAD: serde_json::Value = json!({
-        "amount": 20,
+        "amount": 40,
         "outcome": "YES",
-        "contractId": GITHUB_DOWN_AUG_23_RED_CONTRACT_ID,
+        "contractId": GITHUB_DOWN_AUG_24_RED_CONTRACT_ID,
     });
     static ref MANIFOLD_API_KEY: String =
         std::env::var("MANIFOLD_API_KEY").expect("MANIFOLD_API_KEY not set in environment");
@@ -140,9 +140,9 @@ async fn main() -> Result<()> {
         }
 
         let today = Utc::now();
-        if today.month() == 8 && today.day() == 23 {
+        if today.month() == 8 && today.day() == 24 {
             debug!(
-                GITHUB_DOWN_AUG_23_CONTRACT_ID,
+                GITHUB_DOWN_AUG_24_CONTRACT_ID,
                 TARGET_MONTH, TARGET_DAY, "today matches the target date of the contract",
             );
 
