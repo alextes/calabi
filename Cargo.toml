@@ -3,6 +3,10 @@ name = "calabi"
 version = "0.6.0"
 edition = "2021"
 
+[[bin]]
+name = "calabi"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = { version = "1.0.75", features = ["backtrace"] }
 chrono = "0.4.26"
