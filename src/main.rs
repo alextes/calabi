@@ -1,13 +1,14 @@
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use backoff::{future::retry, ExponentialBackoff};
 use chrono::{Datelike, Utc};
 use futures::future::try_join_all;
 use lazy_static::lazy_static;
 use reqwest::{
     self,
     header::{AUTHORIZATION, CONTENT_TYPE},
-    Client,
+    Client, StatusCode,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -47,7 +48,7 @@ struct Status {
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct StatusResponse {
+struct StatusEnvelope {
     status: Status,
 }
 
@@ -76,7 +77,41 @@ async fn bet_20_github_down(client: &Client, red: bool) -> Result<()> {
 }
 
 const GITHUB_STATUS_URL: &str = "https://www.githubstatus.com/api/v2/status.json";
-const GITHUB_POLL_INTERVAL_SECONDS: u64 = 1;
+const GITHUB_POLL_INTERVAL_MS: u64 = 500;
+
+/// Get the current GitHub incident status.
+/// Uses an exponential backoff on 429s, errors out on anything else.
+async fn get_incident_status() -> Result<StatusEnvelope> {
+    use backoff::Error;
+
+    let github_client = reqwest::Client::new();
+
+    let get_status_with_backoff = || async {
+        github_client
+            .get(GITHUB_STATUS_URL)
+            .send()
+            .await
+            .map_err(Error::Permanent)?
+            .error_for_status()
+            .map_err(|err| {
+                if err.status() == Some(StatusCode::TOO_MANY_REQUESTS) {
+                    Error::Transient {
+                        err,
+                        retry_after: None,
+                    }
+                } else {
+                    Error::Permanent(err)
+                }
+            })?
+            .json::<StatusEnvelope>()
+            .await
+            .map_err(Error::Permanent)
+    };
+
+    retry(ExponentialBackoff::default(), get_status_with_backoff)
+        .await
+        .context("failed to get GitHub status")
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -86,19 +121,11 @@ async fn main() -> Result<()> {
 
     let manifold_client = reqwest::Client::new();
 
-    let github_client = reqwest::Client::new();
-
     loop {
-        let response = github_client
-            .get(GITHUB_STATUS_URL)
-            .send()
-            .await?
-            .json::<StatusResponse>()
-            .await?;
-
+        let response = get_incident_status().await?;
         if response.status.indicator == "none" {
             debug!("GitHub is working fine, nothing to do, sleeping");
-            sleep(std::time::Duration::from_secs(GITHUB_POLL_INTERVAL_SECONDS)).await;
+            sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
             continue;
         }
 
@@ -131,13 +158,13 @@ async fn main() -> Result<()> {
             try_join_all(handles).await?;
 
             info!("bets placed, sleeping to avoid betting again");
-            sleep(std::time::Duration::from_secs(u64::MAX)).await;
+            sleep(Duration::from_secs(u64::MAX)).await;
         } else {
             debug!(
                 TARGET_MONTH,
                 TARGET_DAY, "GitHub has an incident, but today does not match target",
             );
-            sleep(Duration::from_secs(GITHUB_POLL_INTERVAL_SECONDS)).await;
+            sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
         }
     }
 }
