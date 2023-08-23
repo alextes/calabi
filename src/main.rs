@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .json::<StatusResponse>()
             .await?;
 
-        if response.status.indicator != "none" {
+        if response.status.indicator == "none" {
             debug!("GitHub is working fine, nothing to do, sleeping");
             sleep(std::time::Duration::from_secs(POLL_GITHUB_INTERVAL_SECONDS)).await;
             continue;
