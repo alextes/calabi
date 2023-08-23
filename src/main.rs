@@ -11,8 +11,9 @@ use reqwest::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use tokio::time::sleep;
+use tokio::{select, time::sleep};
 use tracing::{debug, info};
+use warp::Filter;
 
 const MANIFOLD_MARKETS_API: &str = "https://manifold.markets/api";
 const BET_PATH: &str = "/v0/bet";
@@ -78,12 +79,22 @@ async fn bet_20_github_down(client: &Client, red: bool) -> Result<()> {
 const GITHUB_STATUS_URL: &str = "https://www.githubstatus.com/api/v2/status.json";
 const GITHUB_POLL_INTERVAL_SECONDS: u64 = 1;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+async fn run_health_server() -> Result<()> {
+    let env = std::env::var("ENV").unwrap_or("DEV".to_string());
+    let address = if env == "DEV" {
+        [127, 0, 0, 1]
+    } else {
+        [0, 0, 0, 0]
+    };
 
-    info!("starting calabi, where's yau?");
+    let routes = warp::any().map(|| "OK");
 
+    warp::serve(routes).bind((address, 8080)).await;
+
+    Ok(())
+}
+
+async fn run_status_polling() -> Result<()> {
     let manifold_client = reqwest::Client::new();
 
     let github_client = reqwest::Client::new();
@@ -139,5 +150,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             sleep(Duration::from_secs(GITHUB_POLL_INTERVAL_SECONDS)).await;
         }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+
+    info!("starting calabi, where's yau?");
+
+    select! {
+        _ = run_health_server() => (),
+        _ = run_status_polling() => (),
     }
 }
