@@ -26,12 +26,12 @@ const CONTENT_TYPE_APPLICATION_JSON: &str = "application/json";
 
 lazy_static! {
     static ref GITHUB_DOWN_BET_YES_PAYLOAD: serde_json::Value = json!({
-        "amount": 40,
+        "amount": 80,
         "outcome": "YES",
         "contractId": GITHUB_DOWN_AUG_24_CONTRACT_ID,
     });
     static ref GITHUB_DOWN_RED_BET_YES_PAYLOAD: serde_json::Value = json!({
-        "amount": 40,
+        "amount": 80,
         "outcome": "YES",
         "contractId": GITHUB_DOWN_AUG_24_RED_CONTRACT_ID,
     });
