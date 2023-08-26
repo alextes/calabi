@@ -18,23 +18,28 @@ use tracing::{debug, info};
 const MANIFOLD_MARKETS_API: &str = "https://manifold.markets/api";
 const BET_PATH: &str = "/v0/bet";
 
-const GITHUB_DOWN_AUG_25_CONTRACT_ID: &str = "CYAajmUqte2oufmUBBdO";
-const GITHUB_DOWN_AUG_25_RED_CONTRACT_ID: &str = "JRJh2iuiDo68oG1GHoeB";
-const TARGET_MONTH: u64 = 8;
-const TARGET_DAY: u64 = 23;
+struct TargetIndicident {
+    month: u32,
+    day: u32,
+    contract_id: &'static str,
+    red_contract_id: &'static str,
+}
+const TARGET_A: TargetIndicident = TargetIndicident {
+    month: 8,
+    day: 26,
+    contract_id: "UXIJnOmM8PvZaU7brYqm",
+    red_contract_id: "6UsKh9DlBSNw7pw46CVP",
+};
+const TARGET_B: TargetIndicident = TargetIndicident {
+    month: 8,
+    day: 27,
+    contract_id: "sOdCYMjBXMNZu9t3KQz8",
+    red_contract_id: "JXYrfKibuu2jq0WA8qao",
+};
+const TARGETS: &[TargetIndicident] = &[TARGET_A, TARGET_B];
 const CONTENT_TYPE_APPLICATION_JSON: &str = "application/json";
 
 lazy_static! {
-    static ref GITHUB_DOWN_BET_YES_PAYLOAD: serde_json::Value = json!({
-        "amount": 80,
-        "outcome": "YES",
-        "contractId": GITHUB_DOWN_AUG_25_CONTRACT_ID,
-    });
-    static ref GITHUB_DOWN_RED_BET_YES_PAYLOAD: serde_json::Value = json!({
-        "amount": 80,
-        "outcome": "YES",
-        "contractId": GITHUB_DOWN_AUG_25_RED_CONTRACT_ID,
-    });
     static ref MANIFOLD_API_KEY: String =
         std::env::var("MANIFOLD_API_KEY").expect("MANIFOLD_API_KEY not set in environment");
     static ref AUTHORIZATION_KEY: String = format!("Key {}", *MANIFOLD_API_KEY);
@@ -52,18 +57,18 @@ struct StatusEnvelope {
     status: Status,
 }
 
-async fn bet_20_github_down(client: &Client, red: bool) -> Result<()> {
-    let payload = if red {
-        &*GITHUB_DOWN_RED_BET_YES_PAYLOAD
-    } else {
-        &*GITHUB_DOWN_BET_YES_PAYLOAD
-    };
+async fn bet_20_github_down(client: &Client, contract_id: &str) -> Result<()> {
+    let payload = json!({
+        "amount": 80,
+        "outcome": "YES",
+        "contractId": contract_id,
+    });
 
     let response = client
         .post(&*MANIFOLD_BET_URL)
         .header(CONTENT_TYPE, CONTENT_TYPE_APPLICATION_JSON)
         .header(AUTHORIZATION, &*AUTHORIZATION_KEY)
-        .json(payload)
+        .json(&payload)
         .send()
         .await?;
 
@@ -140,31 +145,40 @@ async fn main() -> Result<()> {
         }
 
         let today = Utc::now();
-        if today.month() == 8 && today.day() == 25 {
-            debug!(
-                GITHUB_DOWN_AUG_25_CONTRACT_ID,
-                TARGET_MONTH, TARGET_DAY, "today matches the target date of the contract",
-            );
+        for target in TARGETS {
+            let TargetIndicident {
+                month,
+                day,
+                contract_id,
+                red_contract_id,
+            } = target;
 
-            let mut handles = Vec::new();
+            if today.month() == *month || today.day() == *day {
+                debug!(
+                    contract_id,
+                    month, day, "today matches the target date of the contract",
+                );
 
-            for _ in 0..5 {
-                if response.status.indicator == "critical" {
-                    handles.push(bet_20_github_down(&manifold_client, true));
+                let mut handles = Vec::new();
+
+                for _ in 0..5 {
+                    if response.status.indicator == "critical" {
+                        handles.push(bet_20_github_down(&manifold_client, red_contract_id));
+                    }
+                    handles.push(bet_20_github_down(&manifold_client, contract_id));
                 }
-                handles.push(bet_20_github_down(&manifold_client, false));
+
+                try_join_all(handles).await?;
+
+                info!("bets placed, sleeping to avoid betting again");
+                sleep(Duration::from_secs(u64::MAX)).await;
+            } else {
+                debug!(
+                    month,
+                    day, "GitHub has an incident, but today does not match target",
+                );
+                sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
             }
-
-            try_join_all(handles).await?;
-
-            info!("bets placed, sleeping to avoid betting again");
-            sleep(Duration::from_secs(u64::MAX)).await;
-        } else {
-            debug!(
-                TARGET_MONTH,
-                TARGET_DAY, "GitHub has an incident, but today does not match target",
-            );
-            sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
         }
     }
 }
