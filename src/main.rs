@@ -26,17 +26,11 @@ struct TargetIndicident {
 }
 const TARGET_A: TargetIndicident = TargetIndicident {
     month: 8,
-    day: 26,
-    contract_id: "UXIJnOmM8PvZaU7brYqm",
-    red_contract_id: "6UsKh9DlBSNw7pw46CVP",
+    day: 28,
+    contract_id: "5kFCX8YfjxNCYTLXMzT9",
+    red_contract_id: "o2AilVT2jmmef8YIGkzC",
 };
-const TARGET_B: TargetIndicident = TargetIndicident {
-    month: 8,
-    day: 27,
-    contract_id: "sOdCYMjBXMNZu9t3KQz8",
-    red_contract_id: "JXYrfKibuu2jq0WA8qao",
-};
-const TARGETS: &[TargetIndicident] = &[TARGET_A, TARGET_B];
+const TARGETS: &[TargetIndicident] = &[TARGET_A];
 const CONTENT_TYPE_APPLICATION_JSON: &str = "application/json";
 
 lazy_static! {
