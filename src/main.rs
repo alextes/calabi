@@ -126,6 +126,16 @@ async fn main() -> Result<()> {
 
     let manifold_client = reqwest::Client::new();
 
+    for target in TARGETS {
+        info!(
+            contract_id = target.contract_id,
+            red_contract_id = target.red_contract_id,
+            month = target.month,
+            day = target.day,
+            "target date for contract",
+        );
+    }
+
     loop {
         let response = get_incident_status().await?;
         if response.status.indicator == "none" {
