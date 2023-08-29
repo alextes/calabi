@@ -13,7 +13,7 @@ RUN sed -i 's#dummy.rs#src/main.rs#' Cargo.toml
 COPY src ./src
 RUN cargo build --release
 
-FROM gcr.io/distroless/cc AS runtime
+FROM gcr.io/distroless/cc-debian12 AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/calabi /calabi
 ENTRYPOINT ["/calabi"]
