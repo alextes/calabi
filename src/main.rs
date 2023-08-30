@@ -120,7 +120,7 @@ async fn scan_targets(
                     "placing bet",
                 );
 
-                tasks.push(manifold_client.bet(&contract_id, &Outcome::Yes, DEFAULT_BET_SIZE));
+                tasks.push(manifold_client.bet(contract_id, &Outcome::Yes, DEFAULT_BET_SIZE));
             }
 
             try_join_all(tasks).await?;
