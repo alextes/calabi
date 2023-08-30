@@ -13,6 +13,7 @@ backoff = { version = "0.4.0", features = ["tokio"] }
 chrono = "0.4.26"
 futures = "0.3.28"
 lazy_static = "1.4.0"
+regex = { version = "1.9.4", default-features = false, features = ["unicode"] }
 reqwest = { version = "0.11.19", default-features = false, features = [
 	"json",
 	"rustls-tls",

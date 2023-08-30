@@ -1,121 +1,136 @@
-use std::time::Duration;
+mod github_status;
+mod manifold_markets;
 
-use anyhow::{Context, Result};
-use backoff::{future::retry, ExponentialBackoff};
+use std::{sync::Arc, time::Duration};
+
+use anyhow::Result;
 use chrono::{Datelike, Utc};
 use futures::future::try_join_all;
-use lazy_static::lazy_static;
-use reqwest::{
-    self,
-    header::{AUTHORIZATION, CONTENT_TYPE},
-    Client, StatusCode,
-};
-use serde::Deserialize;
-use serde_json::json;
-use tokio::time::sleep;
-use tracing::{debug, info};
+use manifold_markets::{IncidentType, ManifoldClient, TargetMarkets};
+use reqwest::{self, Client};
+use tokio::{select, sync::Mutex, time::sleep};
+use tracing::{debug, info, warn};
 
-const MANIFOLD_MARKETS_API: &str = "https://manifold.markets/api";
-const BET_PATH: &str = "/v0/bet";
+use crate::manifold_markets::Outcome;
 
-struct TargetIndicident {
-    month: u32,
+const GITHUB_POLL_INTERVAL_MS: u64 = 500;
+const DEFAULT_BET_SIZE: u32 = 50;
+const DATE_EXCLUSION_LIST: [(u32, u32); 1] = [(8, 30)];
+const EXCLUSION_DAY_SLEEP_MINUTES: u64 = 20;
+
+#[derive(Debug, Clone)]
+pub struct TargetIndicident {
+    contract_id: String,
     day: u32,
-    contract_id: &'static str,
-    red_contract_id: &'static str,
-}
-const TARGET_A: TargetIndicident = TargetIndicident {
-    month: 8,
-    day: 29,
-    contract_id: "5kFCX8YfjxNCYTLXMzT9",
-    red_contract_id: "o2AilVT2jmmef8YIGkzC",
-};
-const TARGET_B: TargetIndicident = TargetIndicident {
-    month: 8,
-    day: 30,
-    contract_id: "hsXruT9P074SyAgWUX1L",
-    red_contract_id: "vYSLqU2aGD6ZTdtUQUKY",
-};
-const TARGETS: &[TargetIndicident] = &[TARGET_A, TARGET_B];
-const CONTENT_TYPE_APPLICATION_JSON: &str = "application/json";
-
-lazy_static! {
-    static ref MANIFOLD_API_KEY: String =
-        std::env::var("MANIFOLD_API_KEY").expect("MANIFOLD_API_KEY not set in environment");
-    static ref AUTHORIZATION_KEY: String = format!("Key {}", *MANIFOLD_API_KEY);
-    static ref MANIFOLD_BET_URL: String = format!("{}{}", MANIFOLD_MARKETS_API, BET_PATH);
+    incident_type: IncidentType,
+    month: u32,
 }
 
-#[derive(Debug, Deserialize)]
-struct Status {
-    description: String,
-    indicator: String,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct StatusEnvelope {
-    status: Status,
-}
-
-async fn bet_20_github_down(client: &Client, contract_id: &str) -> Result<()> {
-    let payload = json!({
-        "amount": 80,
-        "outcome": "YES",
-        "contractId": contract_id,
-    });
-
-    let response = client
-        .post(&*MANIFOLD_BET_URL)
-        .header(CONTENT_TYPE, CONTENT_TYPE_APPLICATION_JSON)
-        .header(AUTHORIZATION, &*AUTHORIZATION_KEY)
-        .json(&payload)
-        .send()
-        .await?;
-
-    match response.error_for_status() {
-        Ok(response) => {
-            debug!(status = %response.status(), "bet placed");
-            Ok(())
-        }
-        Err(err) => Err(err.into()),
+impl TargetIndicident {
+    fn is_past(&self) -> bool {
+        let today = Utc::now();
+        today.month() > self.month || (today.month() == self.month && today.day() > self.day)
     }
 }
 
-const GITHUB_STATUS_URL: &str = "https://www.githubstatus.com/api/v2/status.json";
-const GITHUB_POLL_INTERVAL_MS: u64 = 500;
+async fn scan_targets(
+    github_client: &Client,
+    manifold_client: &ManifoldClient,
+    target_markets: Arc<Mutex<TargetMarkets>>,
+) -> Result<()> {
+    loop {
+        let now = Utc::now();
 
-/// Get the current GitHub incident status.
-/// Uses an exponential backoff on 429s, errors out on anything else.
-async fn get_incident_status() -> Result<StatusEnvelope> {
-    use backoff::Error;
+        if DATE_EXCLUSION_LIST.contains(&(now.month(), now.day())) {
+            info!(
+                today_month = now.month(),
+                today_day = now.day(),
+                "today is on the exclusion list, sleeping for {} minutes",
+                EXCLUSION_DAY_SLEEP_MINUTES
+            );
+            sleep(Duration::from_secs(60 * EXCLUSION_DAY_SLEEP_MINUTES)).await;
+            continue;
+        }
 
-    let github_client = reqwest::Client::new();
+        let response = github_status::get_incident_status(github_client).await?;
 
-    let get_status_with_backoff = || async {
-        github_client
-            .get(GITHUB_STATUS_URL)
-            .send()
+        if response.is_ok() {
+            debug!("GitHub is working fine, nothing to do, sleeping");
+            sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
+            continue;
+        }
+
+        let current_incident_type: IncidentType = response.indicator().parse()?;
+
+        info!(
+            indicator = %current_incident_type,
+            description = response.description(),
+            "GitHub has an incident!"
+        );
+
+        if current_incident_type == IncidentType::Red {
+            info!("It's a red incident 🤑!");
+        }
+
+        let today = Utc::now();
+
+        let matching_targets: Vec<TargetIndicident> = target_markets
+            .lock()
             .await
-            .map_err(Error::Permanent)?
-            .error_for_status()
-            .map_err(|err| {
-                if err.status() == Some(StatusCode::TOO_MANY_REQUESTS) {
-                    Error::Transient {
-                        err,
-                        retry_after: None,
-                    }
-                } else {
-                    Error::Permanent(err)
-                }
-            })?
-            .json::<StatusEnvelope>()
-            .await
-            .map_err(Error::Permanent)
-    };
+            .targets()
+            .filter(|target| {
+                today.month() == target.month
+                    && today.day() == target.day
+                    && target.incident_type == current_incident_type
+            })
+            .cloned()
+            .collect();
 
-    retry(ExponentialBackoff::default(), get_status_with_backoff)
-        .await
-        .context("failed to get GitHub status")
+        if matching_targets.is_empty() {
+            let target_markets = target_markets.lock().await;
+            warn!(
+                incident_type = %current_incident_type,
+                today_month = today.month(),
+                today_day = today.day(),
+                target_markets = ?target_markets,
+                "GitHub has an incident, but we have no matching targets, did we fail to fetch the target market?",
+            );
+        } else {
+            let mut tasks = Vec::new();
+
+            for target in &matching_targets {
+                let TargetIndicident {
+                    contract_id,
+                    incident_type,
+                    day,
+                    month,
+                } = target;
+
+                debug!(
+                    %incident_type,
+                    contract_id,
+                    day,
+                    month,
+                    "target matches incident",
+                );
+
+                info!(
+                    incident_type = %incident_type,
+                    contract_id,
+                    "placing bet",
+                );
+
+                tasks.push(manifold_client.bet(&contract_id, &Outcome::Yes, DEFAULT_BET_SIZE));
+            }
+
+            try_join_all(tasks).await?;
+
+            info!("bets placed, sleeping to avoid betting again");
+            sleep(Duration::from_secs(u64::MAX)).await;
+        }
+
+        sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
+    }
 }
 
 #[tokio::main]
@@ -124,71 +139,25 @@ async fn main() -> Result<()> {
 
     info!("starting calabi, where's yau?");
 
-    let manifold_client = reqwest::Client::new();
+    let github_client = reqwest::Client::new();
+    let manifold_client = ManifoldClient::new();
 
-    for target in TARGETS {
-        info!(
-            contract_id = target.contract_id,
-            red_contract_id = target.red_contract_id,
-            month = target.month,
-            day = target.day,
-            "target date for contract",
-        );
-    }
+    let targets = Arc::new(Mutex::new(TargetMarkets::new()));
 
-    loop {
-        let response = get_incident_status().await?;
-        if response.status.indicator == "none" {
-            debug!("GitHub is working fine, nothing to do, sleeping");
-            sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
-            continue;
-        }
+    let update_targets_thread = tokio::spawn({
+        let manifold_client = manifold_client.clone();
+        let targets = targets.clone();
+        async move { manifold_markets::update_targets(&manifold_client, targets).await }
+    });
 
-        info!(
-            indicator = response.status.indicator,
-            description = response.status.description,
-            "GitHub has an incident!"
-        );
+    let scan_targets_thread = tokio::spawn({
+        async move { scan_targets(&github_client, &manifold_client, targets).await }
+    });
 
-        if response.status.indicator == "critical" {
-            info!("It's a red incident 🤑!");
-        }
+    select!(
+        result = update_targets_thread => result.unwrap(),
+        result = scan_targets_thread => result.unwrap()
+    )?;
 
-        let today = Utc::now();
-        for target in TARGETS {
-            let TargetIndicident {
-                month,
-                day,
-                contract_id,
-                red_contract_id,
-            } = target;
-
-            if today.month() == *month || today.day() == *day {
-                debug!(
-                    contract_id,
-                    month, day, "today matches the target date of the contract",
-                );
-
-                let mut handles = Vec::new();
-
-                for _ in 0..5 {
-                    if response.status.indicator == "critical" {
-                        handles.push(bet_20_github_down(&manifold_client, red_contract_id));
-                    }
-                    handles.push(bet_20_github_down(&manifold_client, contract_id));
-                }
-
-                try_join_all(handles).await?;
-
-                info!("bets placed, sleeping to avoid betting again");
-                sleep(Duration::from_secs(u64::MAX)).await;
-            } else {
-                debug!(
-                    month,
-                    day, "GitHub has an incident, but today does not match target",
-                );
-                sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;
-            }
-        }
-    }
+    Ok(())
 }
