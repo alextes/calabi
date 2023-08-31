@@ -241,7 +241,7 @@ pub async fn update_targets(
         debug!("checking for new targets");
 
         for target in target_markets.lock().await.targets() {
-            debug!(?target, "current target");
+            debug!(%target, "current target");
         }
 
         let markets = manifold_client.fetch_markets().await?;
