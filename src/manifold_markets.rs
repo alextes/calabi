@@ -278,7 +278,13 @@ pub async fn update_targets(
                     continue;
                 }
 
-                debug!(?target, "found new any incident target");
+                debug!(
+                    target.day = target.day,
+                    target.month = target.month,
+                    target.contract_id = target.contract_id,
+                    target.incident_type = %target.incident_type,
+                    "found new any incident target"
+                );
                 target_markets.lock().await.add_new_target(target);
 
                 // TODO: get the current bets for the market, if you haven't already taken a NO
@@ -307,7 +313,13 @@ pub async fn update_targets(
                     continue;
                 }
 
-                debug!(?target, "found new red incident target");
+                debug!(
+                    target.day = target.day,
+                    target.month = target.month,
+                    target.contract_id = target.contract_id,
+                    target.incident_type = %target.incident_type,
+                    "found new red incident target"
+                );
                 target_markets.lock().await.add_new_target(target);
 
                 // TODO: get the current bets for the market, if you haven't already taken a NO
