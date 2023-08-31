@@ -1,7 +1,7 @@
 mod github_status;
 mod manifold_markets;
 
-use std::{sync::Arc, time::Duration};
+use std::{fmt::Display, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use chrono::{Datelike, Utc};
@@ -24,6 +24,21 @@ pub struct TargetIndicident {
     day: u32,
     incident_type: IncidentType,
     month: u32,
+}
+
+impl Display for TargetIndicident {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let incident_type = match self.incident_type {
+            IncidentType::Red => "red",
+            IncidentType::Any => "any",
+        };
+
+        write!(
+            f,
+            "TargetIndicident(contract_id={},incident_type={},day={},month={})",
+            self.contract_id, incident_type, self.day, self.month
+        )
+    }
 }
 
 impl TargetIndicident {

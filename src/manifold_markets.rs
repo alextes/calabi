@@ -238,6 +238,12 @@ pub async fn update_targets(
     target_markets: Arc<Mutex<TargetMarkets>>,
 ) -> Result<()> {
     loop {
+        debug!("checking for new targets");
+
+        for target in target_markets.lock().await.targets() {
+            debug!(?target, "current target");
+        }
+
         let markets = manifold_client.fetch_markets().await?;
 
         target_markets.lock().await.clear_old_targets();
