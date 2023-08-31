@@ -21,13 +21,15 @@ use tracing::{debug, trace};
 
 use crate::TargetIndicident;
 
+const IBLUE_CREATOR_ID: &str = "HBlWMFF8XkcatdnIfNt0RPoCrXy1";
+const ALEXTES_CREATOR_ID: &str = "fwGK5b9peFQbclczNeQdgCtjlYT2";
 const MANIFOLD_MARKETS_API: &str = "https://manifold.markets/api";
 const CONTENT_TYPE_APPLICATION_JSON: &str = "application/json";
 const BET_PATH: &str = "/v0/bet";
 
 lazy_static! {
     static ref MANIFOLD_API_KEY: String =
-        std::env::var("MANIFOLD_API_KEY").expect("MANIFOLD_API_KEY not set in environment");
+        std::env::var("MANIFOLD_API_KEY").expect("expected MANIFOLD_API_KEY set in environment");
     static ref AUTHORIZATION_KEY: String = format!("Key {}", *MANIFOLD_API_KEY);
     static ref MANIFOLD_BET_URL: String = format!("{}{}", MANIFOLD_MARKETS_API, BET_PATH);
 }
@@ -128,16 +130,14 @@ struct Market {
     question: String,
 }
 
-const IBLUE_CREATOR_ID: &str = "HBlWMFF8XkcatdnIfNt0RPoCrXy1";
-
 impl Market {
     fn is_any_incident_market(&self) -> bool {
-        self.creator_id == IBLUE_CREATOR_ID
+        (self.creator_id == IBLUE_CREATOR_ID || self.creator_id == ALEXTES_CREATOR_ID)
             && self.question.contains("Will GitHub have any incident")
     }
 
     fn is_red_incident_market(&self) -> bool {
-        self.creator_id == IBLUE_CREATOR_ID
+        (self.creator_id == IBLUE_CREATOR_ID || self.creator_id == ALEXTES_CREATOR_ID)
             && self.question.contains("Will GitHub have a red incident")
     }
 }
