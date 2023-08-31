@@ -1,10 +1,10 @@
 mod github_status;
 mod manifold_markets;
 
-use std::{fmt::Display, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
-use chrono::{Datelike, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use futures::future::try_join_all;
 use manifold_markets::{IncidentType, ManifoldClient, TargetMarkets};
 use reqwest::{self, Client};
@@ -26,25 +26,14 @@ pub struct TargetIndicident {
     month: u32,
 }
 
-impl Display for TargetIndicident {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let incident_type = match self.incident_type {
-            IncidentType::Red => "red",
-            IncidentType::Any => "any",
-        };
-
-        write!(
-            f,
-            "TargetIndicident(contract_id={},incident_type={},day={},month={})",
-            self.contract_id, incident_type, self.day, self.month
-        )
-    }
-}
-
 impl TargetIndicident {
     fn is_past(&self) -> bool {
         let today = Utc::now();
         today.month() > self.month || (today.month() == self.month && today.day() > self.day)
+    }
+
+    fn matches(&self, now: &DateTime<Utc>, incident_type: &IncidentType) -> bool {
+        self.month == now.month() && self.day == now.day() && self.incident_type == *incident_type
     }
 }
 
@@ -87,26 +76,24 @@ async fn scan_targets(
             info!("It's a red incident 🤑!");
         }
 
-        let today = Utc::now();
+        let live_target_count = target_markets.lock().await.targets().len();
+
+        debug!(count = live_target_count, "have live targets");
 
         let matching_targets: Vec<TargetIndicident> = target_markets
             .lock()
             .await
             .targets()
-            .filter(|target| {
-                today.month() == target.month
-                    && today.day() == target.day
-                    && target.incident_type == current_incident_type
-            })
             .cloned()
+            .filter(|target| target.matches(&now, &current_incident_type))
             .collect();
 
         if matching_targets.is_empty() {
             let target_markets = target_markets.lock().await;
             warn!(
                 incident_type = %current_incident_type,
-                today_month = today.month(),
-                today_day = today.day(),
+                today_month = now.month(),
+                today_day = now.day(),
                 target_markets = ?target_markets,
                 "GitHub has an incident, but we have no matching targets, did we fail to fetch the target market?",
             );
@@ -114,28 +101,20 @@ async fn scan_targets(
             let mut tasks = Vec::new();
 
             for target in &matching_targets {
-                let TargetIndicident {
-                    contract_id,
-                    incident_type,
-                    day,
-                    month,
-                } = target;
-
                 debug!(
-                    %incident_type,
-                    contract_id,
-                    day,
-                    month,
-                    "target matches incident",
+                    incident_type = %current_incident_type,
+                    today_month = now.month(),
+                    today_day = now.day(),
+                    target_month = target.month,
+                    target_day = target.day,
+                    "target matches incident, queuing bet",
                 );
 
-                info!(
-                    incident_type = %incident_type,
-                    contract_id,
-                    "placing bet",
-                );
-
-                tasks.push(manifold_client.bet(contract_id, &Outcome::Yes, DEFAULT_BET_SIZE));
+                tasks.push(manifold_client.bet(
+                    &target.contract_id,
+                    &Outcome::Yes,
+                    DEFAULT_BET_SIZE,
+                ));
             }
 
             try_join_all(tasks).await?;

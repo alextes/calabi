@@ -110,6 +110,15 @@ pub enum Outcome {
     No,
 }
 
+impl Display for Outcome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Outcome::Yes => write!(f, "YES"),
+            Outcome::No => write!(f, "NO"),
+        }
+    }
+}
+
 impl Serialize for Outcome {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -193,7 +202,7 @@ impl ManifoldClient {
 
         match response.error_for_status() {
             Ok(response) => {
-                debug!(status = %response.status(), "bet placed");
+                debug!(contract_id, %outcome, status = %response.status(), "bet placed");
                 Ok(())
             }
             Err(err) => Err(err.into()),
@@ -239,10 +248,6 @@ pub async fn update_targets(
 ) -> Result<()> {
     loop {
         debug!("checking for new targets");
-
-        for target in target_markets.lock().await.targets() {
-            debug!(%target, "current target");
-        }
 
         let markets = manifold_client.fetch_markets().await?;
 
