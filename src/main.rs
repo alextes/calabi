@@ -110,11 +110,15 @@ async fn scan_targets(
                     "target matches incident, queuing bet",
                 );
 
-                tasks.push(manifold_client.bet(
-                    &target.contract_id,
-                    &Outcome::Yes,
-                    DEFAULT_BET_SIZE,
-                ));
+                // Bet three times on each target.
+                // We don't know how much mana we have to spend.
+                for _i in 0..2 {
+                    tasks.push(manifold_client.bet(
+                        &target.contract_id,
+                        &Outcome::Yes,
+                        DEFAULT_BET_SIZE,
+                    ));
+                }
             }
 
             try_join_all(tasks).await?;
