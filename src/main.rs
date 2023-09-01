@@ -14,7 +14,7 @@ use tracing::{debug, info, warn};
 use crate::manifold_markets::Outcome;
 
 const GITHUB_POLL_INTERVAL_MS: u64 = 500;
-const DEFAULT_BET_SIZE: u32 = 100;
+const DEFAULT_BET_SIZE: u32 = 200;
 const DATE_EXCLUSION_LIST: [(u32, u32); 1] = [(8, 30)];
 const EXCLUSION_DAY_SLEEP_MINUTES: u64 = 20;
 
