@@ -1,4 +1,5 @@
 mod github_status;
+mod log;
 mod manifold_markets;
 
 use std::{sync::Arc, time::Duration};
@@ -133,7 +134,7 @@ async fn scan_targets(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    log::init();
 
     info!("starting calabi, where's yau?");
 
