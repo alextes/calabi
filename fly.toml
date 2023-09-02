@@ -1,0 +1,7 @@
+app = "calabi"
+primary_region = "den"
+
+[build]
+
+[env]
+RUST_LOG = "calabi=debug"
