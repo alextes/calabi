@@ -4,4 +4,5 @@ primary_region = "den"
 [build]
 
 [env]
+LOG_JSON = "true"
 RUST_LOG = "calabi=debug"
