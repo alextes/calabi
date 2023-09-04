@@ -113,7 +113,7 @@ async fn scan_targets(
 
                 // Bet three times on each target.
                 // We don't know how much mana we have to spend.
-                for _i in 0..2 {
+                for _ in 0..2 {
                     tasks.push(manifold_client.bet(
                         &target.contract_id,
                         &Outcome::Yes,
