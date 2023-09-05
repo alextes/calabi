@@ -5,8 +5,9 @@ mod manifold_markets;
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{Date, DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use futures::future::try_join_all;
+use lazy_static::lazy_static;
 use manifold_markets::{IncidentType, ManifoldClient, TargetMarkets};
 use reqwest::{self, Client};
 use tokio::{select, sync::Mutex, time::sleep};
@@ -16,8 +17,11 @@ use crate::manifold_markets::Outcome;
 
 const GITHUB_POLL_INTERVAL_MS: u64 = 500;
 const DEFAULT_BET_SIZE: u32 = 200;
-const DATE_EXCLUSION_LIST: [(u32, u32); 1] = [(8, 30)];
 const EXCLUSION_DAY_SLEEP_MINUTES: u64 = 20;
+
+lazy_static! {
+    static ref DATE_EXCLUSION_LIST: [NaiveDate; 1] = [NaiveDate::from_ymd_opt(2023, 9, 5).unwrap()];
+}
 
 #[derive(Debug, Clone)]
 pub struct TargetIndicident {
@@ -46,7 +50,7 @@ async fn scan_targets(
     loop {
         let now = Utc::now();
 
-        if DATE_EXCLUSION_LIST.contains(&(now.month(), now.day())) {
+        if DATE_EXCLUSION_LIST.contains(&now.date_naive()) {
             info!(
                 today_month = now.month(),
                 today_day = now.day(),
