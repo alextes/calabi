@@ -1,3 +1,10 @@
+//! # Calabi
+//! Calabi is a bot that bets on the outcome of GitHub incidents on [Manifold](https://www.manifold.co/).
+//!
+//! ## Improvements
+//! - [ ] Periodically check if we have bet yes on a target market. If so, add the market to your
+//! exclusion list. https://docs.manifold.markets/api#get-v0marketmarketidpositions
+//! - [ ] When betting on a target market, add the market to the exclusion list when finished.
 mod github_status;
 mod log;
 mod manifold_markets;
