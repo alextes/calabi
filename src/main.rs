@@ -27,7 +27,7 @@ const DEFAULT_BET_SIZE: u32 = 200;
 const EXCLUSION_DAY_SLEEP_MINUTES: u64 = 20;
 
 lazy_static! {
-    static ref DATE_EXCLUSION_LIST: [NaiveDate; 1] = [NaiveDate::from_ymd_opt(2023, 9, 5).unwrap()];
+    static ref DATE_EXCLUSION_LIST: [NaiveDate; 1] = [NaiveDate::from_ymd_opt(2023, 9, 6).unwrap()];
 }
 
 #[derive(Debug, Clone)]
