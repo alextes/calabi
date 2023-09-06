@@ -9,21 +9,22 @@ mod github_status;
 mod log;
 mod manifold_markets;
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use anyhow::Result;
-use chrono::{Date, DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 use futures::future::try_join_all;
 use lazy_static::lazy_static;
 use manifold_markets::{IncidentType, ManifoldClient, TargetMarkets};
 use reqwest::{self, Client};
 use tokio::{select, sync::Mutex, time::sleep};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::manifold_markets::Outcome;
 
 const GITHUB_POLL_INTERVAL_MS: u64 = 500;
 const DEFAULT_BET_SIZE: u32 = 500;
+const NR_OF_BETS: u32 = 2;
 const EXCLUSION_DAY_SLEEP_MINUTES: u64 = 20;
 
 lazy_static! {
@@ -44,7 +45,7 @@ impl TargetIndicident {
         today.month() > self.month || (today.month() == self.month && today.day() > self.day)
     }
 
-    fn matches(&self, now: &DateTime<Utc>, incident_type: &IncidentType) -> bool {
+    fn matches(&self, now: &NaiveDate, incident_type: &IncidentType) -> bool {
         self.month == now.month() && self.day == now.day() && self.incident_type == *incident_type
     }
 }
@@ -54,10 +55,12 @@ async fn scan_targets(
     manifold_client: &ManifoldClient,
     target_markets: Arc<Mutex<TargetMarkets>>,
 ) -> Result<()> {
-    loop {
-        let now = Utc::now();
+    let mut contract_exclusion_list: HashSet<String> = HashSet::new();
 
-        if DATE_EXCLUSION_LIST.contains(&now.date_naive()) {
+    loop {
+        let now = Utc::now().date_naive();
+
+        if DATE_EXCLUSION_LIST.contains(&now) {
             info!(
                 today_month = now.month(),
                 today_day = now.day(),
@@ -78,7 +81,7 @@ async fn scan_targets(
 
         let current_incident_type: IncidentType = response.indicator().parse()?;
 
-        info!(
+        debug!(
             indicator = %current_incident_type,
             description = response.description(),
             "GitHub has an incident!"
@@ -88,55 +91,53 @@ async fn scan_targets(
             info!("It's a red incident 🤑!");
         }
 
-        let live_target_count = target_markets.lock().await.targets().len();
+        let live_target_count = target_markets.lock().await.len();
 
         debug!(count = live_target_count, "have live targets");
 
-        let matching_targets: Vec<TargetIndicident> = target_markets
-            .lock()
-            .await
-            .targets()
-            .cloned()
-            .filter(|target| target.matches(&now, &current_incident_type))
-            .collect();
+        let target_markets = target_markets.lock().await;
 
-        if matching_targets.is_empty() {
-            let target_markets = target_markets.lock().await;
-            warn!(
+        let matching_targets = target_markets.matching_targets(&now, &current_incident_type);
+        debug!(count = matching_targets.len(), "have matching targets");
+
+        let matching_targets = matching_targets
+            .into_iter()
+            .filter(|target| !contract_exclusion_list.contains(&target.contract_id))
+            .collect::<Vec<_>>();
+        debug!(
+            count = matching_targets.len(),
+            "have matching targets not on exclusion list"
+        );
+
+        let mut tasks = Vec::new();
+
+        for target in &matching_targets {
+            debug!(
                 incident_type = %current_incident_type,
                 today_month = now.month(),
                 today_day = now.day(),
-                target_markets = ?target_markets,
-                "GitHub has an incident, but we have no matching targets, did we fail to fetch the target market?",
+                target_month = target.month,
+                target_day = target.day,
+                "target matches incident, queuing bet",
             );
-        } else {
-            let mut tasks = Vec::new();
 
-            for target in &matching_targets {
-                debug!(
-                    incident_type = %current_incident_type,
-                    today_month = now.month(),
-                    today_day = now.day(),
-                    target_month = target.month,
-                    target_day = target.day,
-                    "target matches incident, queuing bet",
-                );
-
-                // Bet three times on each target.
-                // We don't know how much mana we have to spend.
-                for _ in 0..2 {
-                    tasks.push(manifold_client.bet(
-                        &target.contract_id,
-                        &Outcome::Yes,
-                        DEFAULT_BET_SIZE,
-                    ));
-                }
+            // Bet three times on each target.
+            // We don't know how much mana we have to spend.
+            for _ in 0..NR_OF_BETS {
+                tasks.push(manifold_client.bet(
+                    &target.contract_id,
+                    &Outcome::Yes,
+                    DEFAULT_BET_SIZE,
+                ));
             }
+        }
 
-            try_join_all(tasks).await?;
+        try_join_all(tasks).await?;
+        info!("bets placed");
 
-            info!("bets placed, sleeping to avoid betting again");
-            sleep(Duration::from_secs(u64::MAX)).await;
+        // Add matching targets to the exclusion list.
+        for target in matching_targets {
+            contract_exclusion_list.insert(target.contract_id.clone());
         }
 
         sleep(Duration::from_millis(GITHUB_POLL_INTERVAL_MS)).await;

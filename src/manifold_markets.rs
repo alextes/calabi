@@ -1,13 +1,7 @@
-use std::{
-    collections::{hash_map::Values, HashMap},
-    fmt::Display,
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, fmt::Display, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{anyhow, Result};
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 use lazy_static::lazy_static;
 use reqwest::{
     self,
@@ -237,8 +231,19 @@ impl TargetMarkets {
         });
     }
 
-    pub fn targets(&self) -> Values<String, TargetIndicident> {
-        self.0.values()
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn matching_targets(
+        &self,
+        now: &NaiveDate,
+        incident_type: &IncidentType,
+    ) -> Vec<&TargetIndicident> {
+        self.0
+            .values()
+            .filter(|target| target.matches(now, incident_type))
+            .collect()
     }
 }
 
